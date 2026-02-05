@@ -76,6 +76,12 @@ def extract_fea_truth_to_csv(cfg: SensorConfig) -> None:
 
     block_rows.sort()
 
+    def column_index(col: str) -> int:
+        idx = 0
+        for char in col:
+            idx = idx * 26 + (ord(char.upper()) - ord("A") + 1)
+        return idx
+
     rows = []
     for block_row, label in block_rows:
         t3_match = re.search(r"t_parylene2=\s*(\d+)", label)
@@ -83,11 +89,23 @@ def extract_fea_truth_to_csv(cfg: SensorConfig) -> None:
             continue
         t3_um = float(t3_match.group(1))
         header_row = block_row + 1
-        radii = []
-        for col in ["B", "C", "D", "E", "F"]:
-            value = cell_map.get(f"{col}{header_row}")
-            radii.append(float(value))
 
+        header_cells = []
+        for cell_ref, value in cell_map.items():
+            if not cell_ref.endswith(str(header_row)):
+                continue
+            column = re.sub(r"\d", "", cell_ref)
+            if column == "A":
+                continue
+            if value is None:
+                continue
+            header_cells.append((column, float(value)))
+        header_cells.sort(key=lambda item: column_index(item[0]))
+
+        radius_columns = [col for col, _ in header_cells]
+        radii = [radius for _, radius in header_cells]
+
+        pressures_by_row: List[Tuple[float, List[float | None]]] = []
         pressure_row = header_row + 1
         while True:
             pressure_value = cell_map.get(f"A{pressure_row}")
@@ -96,19 +114,26 @@ def extract_fea_truth_to_csv(cfg: SensorConfig) -> None:
             if isinstance(pressure_value, str) and "t_parylene2" in pressure_value:
                 break
             pressure_pa = float(pressure_value)
-            for idx, col in enumerate(["B", "C", "D", "E", "F"]):
+            cap_row: List[float | None] = []
+            for col in radius_columns:
                 cap_value = cell_map.get(f"{col}{pressure_row}")
+                cap_row.append(float(cap_value) if cap_value is not None else None)
+            pressures_by_row.append((pressure_pa, cap_row))
+            pressure_row += 1
+
+        for radius_idx, radius in enumerate(radii):
+            for pressure_pa, cap_row in pressures_by_row:
+                cap_value = cap_row[radius_idx]
                 if cap_value is None:
                     continue
                 rows.append(
                     {
                         "t3_um": t3_um,
-                        "radius_um": radii[idx],
+                        "radius_um": radius,
                         "pressure_pa": pressure_pa,
-                        "capacitance_fF": float(cap_value),
+                        "capacitance_fF": cap_value,
                     }
                 )
-            pressure_row += 1
 
     with open(cfg.fea_csv_path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=["t3_um", "radius_um", "pressure_pa", "capacitance_fF"])
