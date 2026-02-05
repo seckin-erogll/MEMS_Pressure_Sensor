@@ -12,6 +12,7 @@ Step-by-step (workflow-driven) outline:
 from __future__ import annotations
 
 import math
+import time
 from typing import Dict, Tuple
 
 import numpy as np
@@ -76,7 +77,7 @@ def train() -> None:
     # 3) Residual target construction
     residual_samples = build_residual_dataset(truth_rows, analytical_lookup)
 
-    # 4) Sweep-aware split
+    # 4) Sweep-aware split (20% of geometry sweeps for validation)
     train_samples, val_samples = split_by_geometry(residual_samples, validation_ratio=0.2)
 
     # 5) Normalization
@@ -98,18 +99,29 @@ def train() -> None:
     y_val_t = torch.tensor(y_val, dtype=torch.float32, device=device).unsqueeze(1)
 
     best_loss = math.inf
-    for _ in range(cfg.epochs):
+    for epoch in range(cfg.epochs):
+        start_time = time.perf_counter()
         model.train()
         optimizer.zero_grad()
         pred = model(x_train_t)
         loss = loss_fn(pred, y_train_t)
         loss.backward()
         optimizer.step()
+        train_loss = loss.item()
 
         model.eval()
         with torch.no_grad():
             val_pred = model(x_val_t)
             val_loss = loss_fn(val_pred, y_val_t).item()
+
+        epoch_time = time.perf_counter() - start_time
+        print(
+            "Epoch "
+            f"{epoch + 1}/{cfg.epochs} "
+            f"- train loss: {train_loss:.6f} "
+            f"- val loss: {val_loss:.6f} "
+            f"- time: {epoch_time:.2f}s"
+        )
 
         if val_loss < best_loss:
             best_loss = val_loss
