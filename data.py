@@ -186,11 +186,37 @@ def build_residual_dataset(truth_rows: Iterable[Dict[str, float]], analytical_lo
     return samples
 
 
-def split_by_geometry(samples: List[ResidualSample], validation_ratio: float = 0.2) -> Tuple[List[ResidualSample], List[ResidualSample]]:
+def split_by_geometry(
+    samples: List[ResidualSample],
+    validation_ratio: float = 0.2,
+    force_val_keys: List[Tuple[float, float]] | None = None,
+) -> Tuple[List[ResidualSample], List[ResidualSample]]:
     """Split by full (t3, radius) sweeps to avoid leakage."""
     geometry_keys = sorted({(s.t3_um, s.radius_um) for s in samples})
-    split_index = int(len(geometry_keys) * (1 - validation_ratio))
-    train_keys = set(geometry_keys[:split_index])
+    val_count = int(len(geometry_keys) * validation_ratio)
+    force_set = {
+        (float(t3_um), float(radius_um))
+        for t3_um, radius_um in (force_val_keys or [])
+        if (float(t3_um), float(radius_um)) in geometry_keys
+    }
+    if len(force_set) > val_count:
+        raise ValueError("Forced validation geometries exceed the validation split size.")
+
+    val_keys = list(geometry_keys[-val_count:]) if val_count > 0 else []
+    val_set = set(val_keys)
+    for key in force_set:
+        if key not in val_set:
+            val_keys.append(key)
+            val_set.add(key)
+
+    if len(val_keys) > val_count:
+        removable = [key for key in val_keys if key not in force_set]
+        while len(val_keys) > val_count and removable:
+            remove_key = removable.pop(0)
+            val_keys.remove(remove_key)
+        val_set = set(val_keys)
+
+    train_keys = set(geometry_keys) - val_set
 
     train, val = [], []
     for sample in samples:

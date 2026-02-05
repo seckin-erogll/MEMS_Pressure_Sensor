@@ -30,27 +30,43 @@ def _unscale_targets(values: np.ndarray, y_scaler: dict) -> np.ndarray:
     return values * std + mean
 
 
+class HybridPredictor:
+    def __init__(self, cfg: SensorConfig) -> None:
+        self.cfg = cfg
+        self.x_scaler, self.y_scaler = load_scalers(cfg.scaler_path)
+        self.model = ResidualCapacitanceNet()
+        self.model.load_state_dict(torch.load(cfg.model_path, map_location="cpu"))
+        self.model.eval()
+        self.analytical = AnalyticalModel(cfg)
+
+    def predict_residual_batch(self, t3_um: float, radius_um: float, pressures_pa: np.ndarray) -> np.ndarray:
+        pressures = np.asarray(pressures_pa, dtype=float)
+        features = np.column_stack(
+            [
+                np.full_like(pressures, fill_value=t3_um, dtype=float),
+                np.full_like(pressures, fill_value=radius_um, dtype=float),
+                pressures,
+            ]
+        )
+        features_scaled = _scale_features(features, self.x_scaler)
+        with torch.no_grad():
+            residual_scaled = (
+                self.model(torch.tensor(features_scaled, dtype=torch.float32)).numpy().flatten()
+            )
+        return _unscale_targets(residual_scaled, self.y_scaler)
+
+    def predict_hybrid_batch(self, t3_um: float, radius_um: float, pressures_pa: np.ndarray) -> np.ndarray:
+        geom = GeometryParams(radius_m=radius_um * 1e-6, t3_parylene_m=t3_um * 1e-6)
+        analytical = self.analytical.capacitance_sweep(pressures_pa, geom) * 1e15
+        residual = self.predict_residual_batch(t3_um, radius_um, pressures_pa)
+        return analytical + residual
+
+
 def hybrid_capacitance(pressure_pa: float, radius_um: float, t3_um: float) -> float:
     cfg = SensorConfig()
-
-    # a) Analytical baseline
-    geom = GeometryParams(radius_m=radius_um * 1e-6, t3_parylene_m=t3_um * 1e-6)
-    analytical = AnalyticalModel(cfg)
-    c_analytical = analytical.capacitance_sweep([pressure_pa], geom)[0] * 1e15
-
-    # b) Load ML residual
-    x_scaler, y_scaler = load_scalers(cfg.scaler_path)
-    features = np.array([[t3_um, radius_um, pressure_pa]], dtype=float)
-    features_scaled = _scale_features(features, x_scaler)
-
-    model = ResidualCapacitanceNet()
-    model.load_state_dict(torch.load(cfg.model_path, map_location="cpu"))
-    model.eval()
-    with torch.no_grad():
-        residual_scaled = model(torch.tensor(features_scaled, dtype=torch.float32)).numpy().flatten()
-
-    c_residual = _unscale_targets(residual_scaled, y_scaler)[0]
-    return float(c_analytical + c_residual)
+    predictor = HybridPredictor(cfg)
+    hybrid = predictor.predict_hybrid_batch(t3_um, radius_um, np.array([pressure_pa], dtype=float))
+    return float(hybrid[0])
 
 
 if __name__ == "__main__":

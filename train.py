@@ -12,9 +12,11 @@ Step-by-step (workflow-driven) outline:
 from __future__ import annotations
 
 import math
+import os
 import time
 from typing import Dict, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 
 from config import SensorConfig
@@ -78,7 +80,13 @@ def train() -> None:
     residual_samples = build_residual_dataset(truth_rows, analytical_lookup)
 
     # 4) Sweep-aware split (20% of geometry sweeps for validation)
-    train_samples, val_samples = split_by_geometry(residual_samples, validation_ratio=0.2)
+    train_samples, val_samples = split_by_geometry(
+        residual_samples,
+        validation_ratio=0.2,
+        force_val_keys=[(4.0, 400.0)],
+    )
+    val_geometries = sorted({(s.t3_um, s.radius_um) for s in val_samples})
+    print(f"Validation geometries ({len(val_geometries)}): {val_geometries}")
 
     # 5) Normalization
     x_scaler, y_scaler = fit_scalers(train_samples)
@@ -99,6 +107,8 @@ def train() -> None:
     y_val_t = torch.tensor(y_val, dtype=torch.float32, device=device).unsqueeze(1)
 
     best_loss = math.inf
+    train_losses: list[float] = []
+    val_losses: list[float] = []
     for epoch in range(cfg.epochs):
         start_time = time.perf_counter()
         model.train()
@@ -114,6 +124,9 @@ def train() -> None:
             val_pred = model(x_val_t)
             val_loss = loss_fn(val_pred, y_val_t).item()
 
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+
         epoch_time = time.perf_counter() - start_time
         print(
             "Epoch "
@@ -126,6 +139,19 @@ def train() -> None:
         if val_loss < best_loss:
             best_loss = val_loss
             torch.save(model.state_dict(), cfg.model_path)
+
+    os.makedirs("model_data", exist_ok=True)
+    epochs = np.arange(1, cfg.epochs + 1)
+    plt.figure(figsize=(8, 5))
+    plt.plot(epochs, train_losses, label="Train Loss")
+    plt.plot(epochs, val_losses, label="Validation Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("MSE Loss")
+    plt.title("Training vs Validation Loss (Residual Model)")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("model_data/loss_curves.png", dpi=200)
+    plt.close()
 
     print(f"Training complete. Best val loss: {best_loss:.6f}")
 
