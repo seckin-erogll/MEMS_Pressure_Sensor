@@ -92,14 +92,17 @@ def extract_fea_truth_to_csv(cfg: SensorConfig) -> None:
 
         header_cells = []
         for cell_ref, value in cell_map.items():
-            if not cell_ref.endswith(str(header_row)):
+            row_match = re.search(r"(\d+)$", cell_ref)
+            if not row_match or int(row_match.group(1)) != header_row:
                 continue
             column = re.sub(r"\d", "", cell_ref)
-            if column == "A":
+            if column == "A" or value is None:
                 continue
-            if value is None:
+            try:
+                radius_value = float(value)
+            except (TypeError, ValueError):
                 continue
-            header_cells.append((column, float(value)))
+            header_cells.append((column, radius_value))
         header_cells.sort(key=lambda item: column_index(item[0]))
 
         radius_columns = [col for col, _ in header_cells]
@@ -134,8 +137,6 @@ def extract_fea_truth_to_csv(cfg: SensorConfig) -> None:
                         "capacitance_fF": cap_value,
                     }
                 )
-
-    rows.sort(key=lambda row: (row["t3_um"], row["radius_um"], row["pressure_pa"]))
 
     with open(cfg.fea_csv_path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=["t3_um", "radius_um", "pressure_pa", "capacitance_fF"])
