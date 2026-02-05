@@ -149,7 +149,7 @@ def load_fea_truth(cfg: SensorConfig) -> List[Dict[str, float]]:
             extract_fea_truth_to_csv(cfg)
         else:
             raise FileNotFoundError(
-                f\"Missing {cfg.fea_csv_path}. Provide CSV or set fea_excel_path to parse Excel.\"
+                f"Missing {cfg.fea_csv_path}. Provide CSV or set fea_excel_path to parse Excel."
             )
     with open(cfg.fea_csv_path, "r", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
