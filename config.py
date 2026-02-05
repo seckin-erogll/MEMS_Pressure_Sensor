@@ -18,7 +18,7 @@ class SensorConfig:
 
     # Pressure sweep
     pressure_step_pa: float = 100.0
-    pressure_max_pa: float = 10_000.0
+    pressure_max_pa: float = 14_000.0
 
     # Mechanical properties
     e_parylene_pa: float = 3.2e9

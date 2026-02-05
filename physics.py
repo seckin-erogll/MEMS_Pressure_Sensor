@@ -106,7 +106,7 @@ class AnalyticalModel:
         denom = h - w_0 * (1 - (r**2 / geom.radius_m**2)) ** 2
         denom = np.where(denom <= 0, np.nan, denom)
         integrand = r / denom
-        c_no_contact = 2 * math.pi * cfg.eps_0 * np.trapz(integrand, r)
+        c_no_contact = 2 * math.pi * cfg.eps_0 * np.trapezoid(integrand, r)
 
         c_total = c_contact + c_no_contact
         return float(c_total)
