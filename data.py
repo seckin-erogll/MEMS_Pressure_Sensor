@@ -135,6 +135,8 @@ def extract_fea_truth_to_csv(cfg: SensorConfig) -> None:
                     }
                 )
 
+    rows.sort(key=lambda row: (row["t3_um"], row["radius_um"], row["pressure_pa"]))
+
     with open(cfg.fea_csv_path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=["t3_um", "radius_um", "pressure_pa", "capacitance_fF"])
         writer.writeheader()
