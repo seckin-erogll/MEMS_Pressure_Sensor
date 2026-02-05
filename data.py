@@ -74,7 +74,11 @@ def extract_fea_truth_to_csv(cfg: SensorConfig) -> None:
             row = int(re.sub("[^0-9]", "", cell))
             block_rows.append((row, value))
 
-    block_rows.sort()
+    def _t3_value(label: str) -> int:
+        match = re.search(r"=\s*(\d+)", label)
+        return int(match.group(1)) if match else 0
+
+    block_rows.sort(key=lambda item: _t3_value(item[1]))
 
     def column_index(col: str) -> int:
         idx = 0
